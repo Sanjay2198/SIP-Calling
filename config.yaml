@@ -1,0 +1,45 @@
+# SIP Server Configuration
+sip:
+  domain: "176.9.190.89" # SIP server domain
+  username: "193636" # SIP username
+  password: "Salesforce@123" # SIP password
+  sip_id: "193636@157.51.150.247" # Full SIP ID
+  port: 5060
+  transport: "UDP" # UDP or TCP
+
+# Audio Settings
+audio:
+  sample_rate: 8000
+  channels: 1
+  echo_cancellation: true
+
+# Recording Settings
+recording:
+  enabled: true
+  path: "recordings"
+  format: "wav"
+  auto_record: true
+
+# Database
+database:
+  url: "sqlite:///sip_client.db"
+
+# Web API
+api:
+  host: "0.0.0.0"
+  port: 8000
+  debug: true
+
+# AI Analytics
+ai:
+  enabled: true
+  transcription: true
+  sentiment_analysis: true
+  call_summary: true
+  model: "distilbert-base-uncased"
+
+# Call Settings
+call:
+  auto_answer: false
+  ring_timeout: 60 # seconds
+  max_call_duration: 3600 # 1 hour

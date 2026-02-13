@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIP Softphone</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <div class="logo-icon">📞</div>
+                <h1>SIP Softphone</h1>
+            </div>
+            <div class="status-indicator">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">Connecting...</span>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Left Panel: Dialer & Controls -->
+            <div class="panel dialer-panel">
+                <h2>📱 Dialer</h2>
+                
+                <!-- Call Status -->
+                <div class="call-status" id="callStatus">
+                    <div class="status-idle">
+                        <div class="pulse-ring"></div>
+                        <div class="status-icon">📵</div>
+                        <p>Ready to call</p>
+                    </div>
+                </div>
+
+                <!-- Number Input -->
+                <div class="input-group">
+                    <input 
+                        type="text" 
+                        id="numberInput" 
+                        placeholder="Enter number or SIP URI"
+                        class="number-input"
+                    >
+                </div>
+
+                <!-- Dial Pad -->
+                <div class="dialpad">
+                    <button class="dialpad-btn" data-digit="1">1</button>
+                    <button class="dialpad-btn" data-digit="2">2<span>ABC</span></button>
+                    <button class="dialpad-btn" data-digit="3">3<span>DEF</span></button>
+                    
+                    <button class="dialpad-btn" data-digit="4">4<span>GHI</span></button>
+                    <button class="dialpad-btn" data-digit="5">5<span>JKL</span></button>
+                    <button class="dialpad-btn" data-digit="6">6<span>MNO</span></button>
+                    
+                    <button class="dialpad-btn" data-digit="7">7<span>PQRS</span></button>
+                    <button class="dialpad-btn" data-digit="8">8<span>TUV</span></button>
+                    <button class="dialpad-btn" data-digit="9">9<span>WXYZ</span></button>
+                    
+                    <button class="dialpad-btn" data-digit="*">*</button>
+                    <button class="dialpad-btn" data-digit="0">0<span>+</span></button>
+                    <button class="dialpad-btn" data-digit="#">#</button>
+                </div>
+
+                <!-- Call Actions -->
+                <div class="call-actions">
+                    <button class="btn btn-call" id="callBtn">
+                        <span class="btn-icon">📞</span>
+                        Call
+                    </button>
+                    <button class="btn btn-hangup" id="hangupBtn" style="display: none;">
+                        <span class="btn-icon">📴</span>
+                        Hang Up
+                    </button>
+                </div>
+
+                <!-- Call Controls (shown during call) -->
+                <div class="call-controls" id="callControls" style="display: none;">
+                    <button class="control-btn" id="muteBtn" title="Mute">
+                        <span>🔊</span>
+                    </button>
+                    <button class="control-btn" id="holdBtn" title="Hold">
+                        <span>⏸️</span>
+                    </button>
+                    <button class="control-btn" id="answerBtn" title="Answer" style="display: none;">
+                        <span>✅</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Right Panel: Contacts & History -->
+            <div class="panel info-panel">
+                <!-- Tabs -->
+                <div class="tabs">
+                    <button class="tab-btn active" data-tab="contacts">👥 Contacts</button>
+                    <button class="tab-btn" data-tab="history">📜 History</button>
+                </div>
+
+                <!-- Contacts Tab -->
+                <div class="tab-content active" id="contactsTab">
+                    <div class="add-contact-form">
+                        <input type="text" id="contactName" placeholder="Name" class="small-input">
+                        <input type="text" id="contactUri" placeholder="SIP URI / Number" class="small-input">
+                        <button class="btn btn-add" id="addContactBtn">➕ Add</button>
+                    </div>
+                    
+                    <div class="list-container">
+                        <div class="empty-state" id="contactsEmpty">
+                            <div class="empty-icon">👤</div>
+                            <p>No contacts yet</p>
+                            <small>Add contacts above to quick dial</small>
+                        </div>
+                        <ul class="contact-list" id="contactList"></ul>
+                    </div>
+                </div>
+
+                <!-- History Tab -->
+                <div class="tab-content" id="historyTab">
+                    <div class="list-container">
+                        <div class="empty-state" id="historyEmpty">
+                            <div class="empty-icon">📞</div>
+                            <p>No call history</p>
+                            <small>Make your first call to see history</small>
+                        </div>
+                        <ul class="history-list" id="historyList"></ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
