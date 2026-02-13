@@ -1,28 +1,37 @@
-"""
+﻿"""
 Core SIP Client using PJSUA2
 Handles SIP registration, calls, and media
 """
+# pyright: reportAttributeAccessIssue=false, reportAssignmentType=false, reportMissingImports=false, reportMissingModuleSource=false, reportOptionalMemberAccess=false
 import sys
 import time
 import os
 import wave
 from datetime import datetime
 from threading import Thread
+from typing import Any, Optional
 import yaml
 
+pj: Any
 try:
-    import pjsua2 as pj
+    import pjsua2 as pj  # type: ignore[import-not-found]
     PJSUA2_AVAILABLE = True
-    print("✅ PJSUA2 library loaded successfully")
+    print("[OK] PJSUA2 library loaded successfully")
 except ImportError:
     PJSUA2_AVAILABLE = False
-    print("⚠️  PJSUA2 not available - SIP functionality disabled")
+    print("[WARN] PJSUA2 not available - SIP functionality disabled")
     print("   The web UI and API will work, but calls cannot be made.")
     print("   To enable SIP: See README.md for PJSUA2 installation.")
     
     # Create dummy classes so the code doesn't crash
-    class pj:
+    class _PjFallback:
         PJSUA_INVALID_ID = -1
+        PJMEDIA_TYPE_AUDIO = 1
+        PJSUA_CALL_MEDIA_ACTIVE = 1
+        PJSUA_CALL_MEDIA_REMOTE_HOLD = 2
+        PJSUA_CALL_UPDATE_CONTACT = 1
+        PJSIP_TRANSPORT_UDP = 1
+        PJSIP_TRANSPORT_TCP = 2
 
         class Call:
             def __init__(self, *args, **kwargs):
@@ -35,6 +44,11 @@ except ImportError:
                 pass
         class Error(Exception):
             pass
+        class CallOpParam:
+            def __init__(self, *args, **kwargs):
+                self.statusCode = 0
+                self.opt = type('Opt', (), {'flag': 0})()
+    pj = _PjFallback
 
 from models import CallHistory, get_session
 
@@ -52,7 +66,7 @@ class MyCall(pj.Call):
         self.recording_id = None
         self.call_start_time = None
         self.db_session = get_session()
-        self.call_record = None
+        self.call_record: Optional[CallHistory] = None
         
     def onCallState(self, prm):
         """Called when call state changes"""
@@ -203,7 +217,7 @@ class MyAccount(pj.Account):
     def __init__(self, client):
         pj.Account.__init__(self)
         self.client = client
-        self.current_call = None
+        self.current_call: Optional[MyCall] = None
         self.db_session = get_session()
     
     def onRegState(self, prm):
@@ -266,7 +280,7 @@ class SIPClient:
     def start(self):
         """Start SIP client"""
         if not PJSUA2_AVAILABLE:
-            print("⚠️  Skipping SIP client startup - PJSUA2 not available")
+            print("[WARN] Skipping SIP client startup - PJSUA2 not available")
             return
             
         try:
@@ -331,6 +345,73 @@ class SIPClient:
     
     def make_call(self, destination):
         """Make outgoing call"""
+        # Feature: Demo Mode / Simulation
+        if not PJSUA2_AVAILABLE:
+            print(f"[WARN] DEMO MODE: Simulating call to {destination}")
+            
+            # Create a mock call object
+            class MockCall:
+                def __init__(self):
+                    self.info = type('Info', (), {'stateText': 'CONFIRMED', 'remoteUri': destination, 'connectDuration': type('Dur', (), {'sec': 0})()})()
+                    self.on_hold = False
+                    self.is_muted = False
+                    self.start_time = datetime.utcnow()
+                    
+                def getInfo(self):
+                    # Update duration
+                    duration = (datetime.utcnow() - self.start_time).total_seconds()
+                    self.info.connectDuration.sec = int(duration)
+                    return self.info
+                    
+                def hangup(self, prm):
+                    print("Demo call ended")
+                    
+                def hold(self):
+                    self.on_hold = True
+                    print("Demo call held")
+                    
+                def resume(self):
+                    self.on_hold = False
+                    print("Demo call resumed")
+                    
+                def mute(self):
+                    self.is_muted = True
+                    print("Demo call muted")
+                    
+                def unmute(self):
+                    self.is_muted = False
+                    print("Demo call unmuted")
+                    
+                def send_dtmf(self, digits):
+                    print(f"Demo DTMF: {digits}")
+
+            # Assign to account
+            if not self.account:
+                self.account = type('MockAccount', (), {'current_call': None})()
+            
+            mock_call = MockCall()
+            self.account.current_call = mock_call
+            
+            # Create database record
+            db_session = None
+            try:
+                db_session = get_session()
+                call_record = CallHistory(
+                    remote_uri=destination,
+                    direction='outbound',
+                    status='answered',
+                    start_time=datetime.utcnow()
+                )
+                db_session.add(call_record)
+                db_session.commit()
+            except Exception as e:
+                print(f"[WARN] Demo call history write failed: {e}")
+            finally:
+                if db_session:
+                    db_session.close()
+            
+            return mock_call
+
         try:
             if not self.account:
                 print(" Not registered!")
@@ -364,19 +445,24 @@ class SIPClient:
             
             return call
             
-        except pj.Error as e:
-            print(f" Call failed: {e}")
+        except Exception as e:
+            print(f"Call failed: {e}")
+            import traceback
+            traceback.print_exc()
             return None
     
     def answer_call(self):
         """Answer incoming call"""
         if self.account and self.account.current_call:
+            if not PJSUA2_AVAILABLE:
+                print(" Answered (Demo)")
+                return
             try:
                 prm = pj.CallOpParam()
                 prm.statusCode = 200
                 self.account.current_call.answer(prm)
                 print(" Call answered")
-            except pj.Error as e:
+            except Exception as e:
                 print(f" Answer failed: {e}")
         else:
             print(" No incoming call")
@@ -384,11 +470,19 @@ class SIPClient:
     def hangup(self):
         """Hangup current call"""
         if self.account and self.account.current_call:
+            if not PJSUA2_AVAILABLE:
+                try:
+                    self.account.current_call.hangup(None)
+                except Exception:
+                    pass
+                self.account.current_call = None
+                print(" Call ended (Demo)")
+                return
             try:
                 prm = pj.CallOpParam()
                 self.account.current_call.hangup(prm)
                 print(" Call ended")
-            except pj.Error as e:
+            except Exception as e:
                 print(f" Hangup failed: {e}")
         else:
             print(" No active call")
@@ -396,6 +490,19 @@ class SIPClient:
     def get_call_status(self):
         """Get current call status"""
         if self.account and self.account.current_call:
+            # Handle Mock/Demo call
+            if not PJSUA2_AVAILABLE:
+                ci = self.account.current_call.getInfo()
+                return {
+                    'active': True,
+                    'state': ci.stateText,
+                    'remote_uri': ci.remoteUri,
+                    'duration': ci.connectDuration.sec,
+                    'on_hold': self.account.current_call.on_hold,
+                    'is_muted': self.account.current_call.is_muted
+                }
+                
+            # Handle Real PJSUA2 call
             ci = self.account.current_call.getInfo()
             return {
                 'active': True,
@@ -409,10 +516,14 @@ class SIPClient:
     
     def stop(self):
         """Stop SIP client"""
+        if not PJSUA2_AVAILABLE:
+            print(" SIP client stopped (Demo)")
+            return
+            
         try:
             if self.account:
                 self.account.shutdown()
-            if self.transport:
+            if self.transport and self.ep:
                 self.ep.transportClose(self.transport)
             if self.ep:
                 self.ep.libDestroy()
@@ -458,3 +569,4 @@ if __name__ == '__main__':
         print("\n\nShutting down...")
     finally:
         client.stop()
+

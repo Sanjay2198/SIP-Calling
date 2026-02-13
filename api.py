@@ -1,304 +1,210 @@
 """
-FastAPI Web API for SIP Client
-Provides REST endpoints for controlling the SIP softphone
+Simple SIP Process Control API
+Endpoints:
+- GET /
+- POST /make_call
+- POST /hangup_call
 """
-from fastapi import FastAPI, HTTPException, BackgroundTasks
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel
-from typing import Optional, List
+
+from __future__ import annotations
+
 import os
-from datetime import datetime
+import subprocess
+import sys
+import threading
+from typing import Optional, TypeGuard
 
-from sip_client import SIPClient
-from models import Contact, CallHistory, get_session
+import yaml
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
 
-# Initialize FastAPI app
-app = FastAPI(title="SIP Softphone API", version="1.0.0")
+app = FastAPI(title="FastAPI", version="0.1.0")
 
-# Initialize SIP client (global instance)
-sip_client = None
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# Data models
+
 class CallRequest(BaseModel):
-    destination: str
-
-class DTMFRequest(BaseModel):
-    digits: str
-
-class ContactCreate(BaseModel):
-    name: str
-    sip_uri: str
-    phone_number: Optional[str] = None
-    email: Optional[str] = None
-    notes: Optional[str] = None
+    number: str
 
 
-# Startup event
-@app.on_event("startup")
-async def startup_event():
-    """Initialize SIP client on startup"""
-    global sip_client
-    try:
-        sip_client = SIPClient()
-        sip_client.start()
-        print(" SIP Client started successfully")
-    except Exception as e:
-        print(f" Failed to start SIP client: {e}")
+HTML_PAGE = """
+<!DOCTYPE html>
+<html>
+<head>
+  <title>SIP Call UI</title>
+  <style>
+    body { font-family: sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #f0f2f5; }
+    .box { background: #fff; padding: 24px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 420px; text-align: center; }
+    input { width: 100%; padding: 10px; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 8px; }
+    button { padding: 10px 16px; border: 0; border-radius: 8px; color: #fff; cursor: pointer; margin-right: 8px; }
+    .call { background: #2e7d32; }
+    .hangup { background: #c62828; }
+    pre { text-align: left; background: #eef1f4; padding: 10px; border-radius: 8px; min-height: 56px; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h3>SIP Call UI</h3>
+    <input id="number" type="text" placeholder="Enter Number" />
+    <button class="call" onclick="makeCall()">Make Call</button>
+    <button class="hangup" onclick="hangupCall()">Hangup Call</button>
+    <pre id="response"></pre>
+  </div>
 
-
-# Shutdown event
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup on shutdown"""
-    global sip_client
-    if sip_client:
-        sip_client.stop()
-        print(" SIP Client stopped")
-
-
-# === Call Management Endpoints ===
-
-@app.post("/api/call/make")
-async def make_call(request: CallRequest):
-    """Make an outgoing call"""
-    if not sip_client:
-        raise HTTPException(status_code=503, detail="SIP client not initialized")
-    
-    call = sip_client.make_call(request.destination)
-    if call:
-        return {"success": True, "message": f"Calling {request.destination}"}
-    else:
-        raise HTTPException(status_code=500, detail="Failed to make call")
-
-
-@app.post("/api/call/answer")
-async def answer_call():
-    """Answer incoming call"""
-    if not sip_client:
-        raise HTTPException(status_code=503, detail="SIP client not initialized")
-    
-    sip_client.answer_call()
-    return {"success": True, "message": "Call answered"}
-
-
-@app.post("/api/call/hangup")
-async def hangup_call():
-    """Hangup current call"""
-    if not sip_client:
-        raise HTTPException(status_code=503, detail="SIP client not initialized")
-    
-    sip_client.hangup()
-    return {"success": True, "message": "Call ended"}
-
-
-@app.post("/api/call/hold")
-async def hold_call():
-    """Put call on hold"""
-    if not sip_client or not sip_client.account or not sip_client.account.current_call:
-        raise HTTPException(status_code=404, detail="No active call")
-    
-    sip_client.account.current_call.hold()
-    return {"success": True, "message": "Call on hold"}
-
-
-@app.post("/api/call/resume")
-async def resume_call():
-    """Resume held call"""
-    if not sip_client or not sip_client.account or not sip_client.account.current_call:
-        raise HTTPException(status_code=404, detail="No active call")
-    
-    sip_client.account.current_call.resume()
-    return {"success": True, "message": "Call resumed"}
-
-
-@app.post("/api/call/mute")
-async def mute_call():
-    """Mute microphone"""
-    if not sip_client or not sip_client.account or not sip_client.account.current_call:
-        raise HTTPException(status_code=404, detail="No active call")
-    
-    sip_client.account.current_call.mute()
-    return {"success": True, "message": "Muted"}
-
-
-@app.post("/api/call/unmute")
-async def unmute_call():
-    """Unmute microphone"""
-    if not sip_client or not sip_client.account or not sip_client.account.current_call:
-        raise HTTPException(status_code=404, detail="No active call")
-    
-    sip_client.account.current_call.unmute()
-    return {"success": True, "message": "Unmuted"}
-
-
-@app.post("/api/call/dtmf")
-async def send_dtmf(request: DTMFRequest):
-    """Send DTMF tones"""
-    if not sip_client or not sip_client.account or not sip_client.account.current_call:
-        raise HTTPException(status_code=404, detail="No active call")
-    
-    sip_client.account.current_call.send_dtmf(request.digits)
-    return {"success": True, "message": f"DTMF sent: {request.digits}"}
-
-
-@app.get("/api/call/status")
-async def get_call_status():
-    """Get current call status"""
-    if not sip_client:
-        raise HTTPException(status_code=503, detail="SIP client not initialized")
-    
-    status = sip_client.get_call_status()
-    return status
-
-
-# === Call History Endpoints ===
-
-@app.get("/api/history")
-async def get_call_history(limit: int = 50, offset: int = 0):
-    """Get call history"""
-    session = get_session()
-    try:
-        calls = session.query(CallHistory)\
-            .order_by(CallHistory.start_time.desc())\
-            .limit(limit)\
-            .offset(offset)\
-            .all()
-        
-        return {"calls": [call.to_dict() for call in calls]}
-    finally:
-        session.close()
-
-
-@app.get("/api/history/{call_id}")
-async def get_call_details(call_id: int):
-    """Get specific call details"""
-    session = get_session()
-    try:
-        call = session.query(CallHistory).filter(CallHistory.id == call_id).first()
-        if not call:
-            raise HTTPException(status_code=404, detail="Call not found")
-        
-        return call.to_dict()
-    finally:
-        session.close()
-
-
-@app.get("/api/history/{call_id}/recording")
-async def get_recording(call_id: int):
-    """Get call recording file"""
-    session = get_session()
-    try:
-        call = session.query(CallHistory).filter(CallHistory.id == call_id).first()
-        if not call:
-            raise HTTPException(status_code=404, detail="Call not found")
-        
-        if not call.recording_path or not os.path.exists(call.recording_path):
-            raise HTTPException(status_code=404, detail="Recording not found")
-        
-        return FileResponse(
-            call.recording_path,
-            media_type="audio/wav",
-            filename=os.path.basename(call.recording_path)
-        )
-    finally:
-        session.close()
-
-
-# === Contact Management Endpoints ===
-
-@app.get("/api/contacts")
-async def get_contacts():
-    """Get all contacts"""
-    session = get_session()
-    try:
-        contacts = session.query(Contact).order_by(Contact.name).all()
-        return {"contacts": [contact.to_dict() for contact in contacts]}
-    finally:
-        session.close()
-
-
-@app.post("/api/contacts")
-async def create_contact(contact: ContactCreate):
-    """Create new contact"""
-    session = get_session()
-    try:
-        # Check if contact already exists
-        existing = session.query(Contact).filter(Contact.sip_uri == contact.sip_uri).first()
-        if existing:
-            raise HTTPException(status_code=400, detail="Contact already exists")
-        
-        new_contact = Contact(
-            name=contact.name,
-            sip_uri=contact.sip_uri,
-            phone_number=contact.phone_number,
-            email=contact.email,
-            notes=contact.notes
-        )
-        session.add(new_contact)
-        session.commit()
-        
-        return {"success": True, "contact": new_contact.to_dict()}
-    finally:
-        session.close()
-
-
-@app.delete("/api/contacts/{contact_id}")
-async def delete_contact(contact_id: int):
-    """Delete contact"""
-    session = get_session()
-    try:
-        contact = session.query(Contact).filter(Contact.id == contact_id).first()
-        if not contact:
-            raise HTTPException(status_code=404, detail="Contact not found")
-        
-        session.delete(contact)
-        session.commit()
-        
-        return {"success": True, "message": "Contact deleted"}
-    finally:
-        session.close()
-
-
-# === System Endpoints ===
-
-@app.get("/api/health")
-async def health_check():
-    """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "sip_registered": sip_client is not None,
-        "timestamp": datetime.utcnow().isoformat()
+  <script>
+    async function makeCall() {
+      const number = document.getElementById('number').value;
+      const res = await fetch('/make_call', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ number })
+      });
+      const data = await res.json();
+      document.getElementById('response').textContent = JSON.stringify(data, null, 2);
     }
 
+    async function hangupCall() {
+      const res = await fetch('/hangup_call', { method: 'POST' });
+      const data = await res.json();
+      document.getElementById('response').textContent = JSON.stringify(data, null, 2);
+    }
+  </script>
+</body>
+</html>
+"""
 
-# Serve static files (HTML/CSS/JS)
-if os.path.exists("static"):
-    app.mount("/static", StaticFiles(directory="static"), name="static")
+_active_process: Optional[subprocess.Popen[bytes]] = None
+_process_lock = threading.Lock()
 
 
-@app.get("/")
-async def root():
-    """Serve main HTML page"""
-    if os.path.exists("static/index.html"):
-        return FileResponse("static/index.html")
-    return {"message": "SIP Softphone API", "docs": "/docs"}
+def _is_running(proc: Optional[subprocess.Popen[bytes]]) -> TypeGuard[subprocess.Popen[bytes]]:
+    return proc is not None and proc.poll() is None
+
+
+def _terminate(proc: subprocess.Popen[bytes]) -> None:
+    if proc.poll() is not None:
+        return
+
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=5)
+
+
+@app.on_event("shutdown")
+async def shutdown_event() -> None:
+    global _active_process
+    with _process_lock:
+        proc = _active_process
+        if _is_running(proc):
+            _terminate(proc)
+        _active_process = None
+
+
+@app.get("/", response_class=HTMLResponse)
+async def serve_html() -> str:
+    """Serve Html"""
+    return HTML_PAGE
+
+
+@app.post("/make_call")
+async def make_call(request: CallRequest):
+    """Api Make Call"""
+    global _active_process
+
+    number = request.number.strip()
+    if not number:
+        raise HTTPException(status_code=400, detail="Number is required")
+
+    with _process_lock:
+        proc = _active_process
+        if _is_running(proc):
+            return {
+                "status": "success",
+                "message": f"Call already active. PID: {proc.pid}",
+            }
+
+        command = [sys.executable, "sip_minimal.py", number]
+        try:
+            if os.name == "nt":
+                new_proc = subprocess.Popen(
+                    command,
+                    cwd=os.getcwd(),
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+                )
+            else:
+                new_proc = subprocess.Popen(
+                    command,
+                    cwd=os.getcwd(),
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+
+            _active_process = new_proc
+            return {
+                "status": "success",
+                "message": f"Call initiated to {number}. PID: {new_proc.pid}",
+            }
+        except Exception as exc:
+            _active_process = None
+            raise HTTPException(status_code=500, detail=f"Error initiating call: {exc}")
+
+
+@app.post("/hangup_call")
+async def hangup_call():
+    """Api Hangup Call"""
+    global _active_process
+
+    with _process_lock:
+        proc = _active_process
+        if not _is_running(proc):
+            _active_process = None
+            return {
+                "status": "success",
+                "message": "No active call process found.",
+            }
+
+        pid = proc.pid
+        try:
+            _terminate(proc)
+            return {
+                "status": "success",
+                "message": f"Call terminated. PID: {pid}",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Error hanging up call: {exc}")
+        finally:
+            _active_process = None
+
+
+def _load_api_config() -> dict:
+    try:
+        with open("config.yaml", "r", encoding="utf-8") as handle:
+            config = yaml.safe_load(handle) or {}
+            return config.get("api", {})
+    except Exception:
+        return {}
 
 
 if __name__ == "__main__":
     import uvicorn
-    import yaml
-    
-    # Load config
-    with open('config.yaml', 'r') as f:
-        config = yaml.safe_load(f)
-    
-    api_config = config.get('api', {})
-    
-    # Run server
+
+    api_config = _load_api_config()
     uvicorn.run(
         app,
-        host=api_config.get('host', '0.0.0.0'),
-        port=api_config.get('port', 8000),
-        log_level="info"
+        host=api_config.get("host", "0.0.0.0"),
+        port=api_config.get("port", 8000),
+        log_level="info",
     )

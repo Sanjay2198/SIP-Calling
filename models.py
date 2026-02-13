@@ -6,6 +6,7 @@ from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
+from typing import Optional, cast
 import yaml
 
 Base = declarative_base()
@@ -24,6 +25,8 @@ class Contact(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     def to_dict(self):
+        created_at = cast(Optional[datetime], self.created_at)
+        updated_at = cast(Optional[datetime], self.updated_at)
         return {
             'id': self.id,
             'name': self.name,
@@ -31,8 +34,8 @@ class Contact(Base):
             'phone_number': self.phone_number,
             'email': self.email,
             'notes': self.notes,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+            'created_at': created_at.isoformat() if created_at is not None else None,
+            'updated_at': updated_at.isoformat() if updated_at is not None else None
         }
 
 
@@ -54,13 +57,15 @@ class CallHistory(Base):
     notes = Column(String(500))
     
     def to_dict(self):
+        start_time = cast(Optional[datetime], self.start_time)
+        end_time = cast(Optional[datetime], self.end_time)
         return {
             'id': self.id,
             'remote_uri': self.remote_uri,
             'direction': self.direction,
             'status': self.status,
-            'start_time': self.start_time.isoformat() if self.start_time else None,
-            'end_time': self.end_time.isoformat() if self.end_time else None,
+            'start_time': start_time.isoformat() if start_time is not None else None,
+            'end_time': end_time.isoformat() if end_time is not None else None,
             'duration': self.duration,
             'recording_path': self.recording_path,
             'transcript': self.transcript,

@@ -6,6 +6,7 @@ alembic==1.13.1
 pyaudio==0.2.14
 SpeechRecognition==3.10.1
 transformers==4.37.0
+numpy<2
 torch==2.1.2
 python-dotenv==1.0.0
 pyyaml==6.0.1

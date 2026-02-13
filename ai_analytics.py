@@ -8,22 +8,25 @@ import os
 import wave
 from datetime import datetime
 from threading import Thread
+from typing import Any, Dict, List, Optional, cast
 import yaml
 
 # Speech recognition
+sr: Any
 try:
     import speech_recognition as sr
     SPEECH_AVAILABLE = True
 except ImportError:
-    print("⚠️  SpeechRecognition not installed. Run: pip install SpeechRecognition")
+    print("  SpeechRecognition not installed. Run: pip install SpeechRecognition")
     SPEECH_AVAILABLE = False
 
 # Transformers for NLP
+pipeline: Any
 try:
     from transformers import pipeline
     TRANSFORMERS_AVAILABLE = True
 except ImportError:
-    print("⚠️  Transformers not installed. Run: pip install transformers torch")
+    print("  Transformers not installed. Run: pip install transformers torch")
     TRANSFORMERS_AVAILABLE = False
 
 from models import CallHistory, get_session
@@ -41,16 +44,16 @@ class AIAnalytics:
         self.enabled = self.ai_config.get('enabled', False)
         
         if not self.enabled:
-            print("ℹ️  AI analytics disabled in config")
+            print(" AI analytics disabled in config")
             return
         
         # Initialize models
-        self.sentiment_analyzer = None
-        self.summarizer = None
+        self.sentiment_analyzer: Any = None
+        self.summarizer: Any = None
         
         if TRANSFORMERS_AVAILABLE:
             try:
-                print("🤖 Loading AI models...")
+                print(" Loading AI models...")
                 
                 if self.ai_config.get('sentiment_analysis', True):
                     self.sentiment_analyzer = pipeline(
@@ -64,11 +67,11 @@ class AIAnalytics:
                         model="facebook/bart-large-cnn"
                     )
                 
-                print("✅ AI models loaded successfully")
+                print(" AI models loaded successfully")
             except Exception as e:
-                print(f"⚠️  Failed to load AI models: {e}")
+                print(f"  Failed to load AI models: {e}")
     
-    def transcribe_audio(self, audio_path):
+    def transcribe_audio(self, audio_path: str) -> Optional[str]:
         """
         Transcribe audio file to text using Google Speech Recognition
         
@@ -79,37 +82,37 @@ class AIAnalytics:
             str: Transcribed text or None
         """
         if not SPEECH_AVAILABLE:
-            print("❌ Speech recognition not available")
+            print(" Speech recognition not available")
             return None
         
         if not self.ai_config.get('transcription', True):
             return None
         
         try:
-            recognizer = sr.Recognizer()
+            recognizer = cast(Any, sr.Recognizer())
             
             # Load audio file
             with sr.AudioFile(audio_path) as source:
                 audio_data = recognizer.record(source)
             
             # Recognize speech using Google Speech Recognition
-            print(f"🎤 Transcribing: {audio_path}")
-            text = recognizer.recognize_google(audio_data)
+            print(f" Transcribing: {audio_path}")
+            text = cast(str, recognizer.recognize_google(audio_data))
             
-            print(f"✅ Transcription complete: {len(text)} characters")
+            print(f" Transcription complete: {len(text)} characters")
             return text
             
         except sr.UnknownValueError:
-            print("⚠️  Could not understand audio")
+            print("  Could not understand audio")
             return None
         except sr.RequestError as e:
-            print(f"❌ Speech recognition service error: {e}")
+            print(f" Speech recognition service error: {e}")
             return None
         except Exception as e:
-            print(f"❌ Transcription error: {e}")
+            print(f" Transcription error: {e}")
             return None
     
-    def analyze_sentiment(self, text):
+    def analyze_sentiment(self, text: str) -> Optional[str]:
         """
         Analyze sentiment of text
         
@@ -126,18 +129,27 @@ class AIAnalytics:
             # Truncate text if too long (model limit)
             text = text[:512]
             
-            result = self.sentiment_analyzer(text)[0]
-            sentiment = result['label'].lower()
-            confidence = result['score']
+            results = cast(List[Dict[str, Any]], self.sentiment_analyzer(text))
+            if not results:
+                return None
+
+            first = results[0]
+            label = first.get('label')
+            score = first.get('score')
+            if not isinstance(label, str) or not isinstance(score, (int, float)):
+                return None
+
+            sentiment = label.lower()
+            confidence = float(score)
             
-            print(f"💭 Sentiment: {sentiment} ({confidence:.2%} confidence)")
+            print(f" Sentiment: {sentiment} ({confidence:.2%} confidence)")
             return f"{sentiment} ({confidence:.0%})"
             
         except Exception as e:
-            print(f"❌ Sentiment analysis error: {e}")
+            print(f" Sentiment analysis error: {e}")
             return None
     
-    def generate_summary(self, text):
+    def generate_summary(self, text: str) -> Optional[str]:
         """
         Generate summary of text
         
@@ -158,21 +170,31 @@ class AIAnalytics:
             # Truncate if too long
             text = text[:1024]
             
-            summary = self.summarizer(
+            summaries = cast(
+                List[Dict[str, Any]],
+                self.summarizer(
                 text,
                 max_length=130,
                 min_length=30,
                 do_sample=False
-            )[0]['summary_text']
+                ),
+            )
+            if not summaries:
+                return None
+
+            summary_text = summaries[0].get('summary_text')
+            if not isinstance(summary_text, str):
+                return None
+            summary = summary_text
             
-            print(f"📝 Summary generated: {len(summary)} characters")
+            print(f" Summary generated: {len(summary)} characters")
             return summary
             
         except Exception as e:
-            print(f"❌ Summary generation error: {e}")
+            print(f" Summary generation error: {e}")
             return None
     
-    def process_call_recording(self, call_id):
+    def process_call_recording(self, call_id: int) -> None:
         """
         Process a call recording with AI analytics
         Background task that updates the database
@@ -183,22 +205,23 @@ class AIAnalytics:
         if not self.enabled:
             return
         
-        print(f"🔄 Processing call {call_id} with AI...")
+        print(f" Processing call {call_id} with AI...")
         
         session = get_session()
         try:
-            call = session.query(CallHistory).filter(CallHistory.id == call_id).first()
+            call = cast(Any, session.query(CallHistory).filter(CallHistory.id == call_id).first())
+            recording_path = cast(Optional[str], getattr(call, "recording_path", None)) if call else None
             
-            if not call or not call.recording_path:
-                print(f"❌ Call {call_id} has no recording")
+            if not call or not recording_path:
+                print(f" Call {call_id} has no recording")
                 return
             
-            if not os.path.exists(call.recording_path):
-                print(f"❌ Recording file not found: {call.recording_path}")
+            if not os.path.exists(recording_path):
+                print(f" Recording file not found: {recording_path}")
                 return
             
             # Step 1: Transcribe audio
-            transcript = self.transcribe_audio(call.recording_path)
+            transcript = self.transcribe_audio(recording_path)
             if transcript:
                 call.transcript = transcript
                 session.commit()
@@ -215,16 +238,16 @@ class AIAnalytics:
                     call.summary = summary
                     session.commit()
                 
-                print(f"✅ Call {call_id} processing complete")
+                print(f" Call {call_id} processing complete")
             else:
-                print(f"⚠️  No transcript available for call {call_id}")
+                print(f"  No transcript available for call {call_id}")
                 
         except Exception as e:
-            print(f"❌ Error processing call {call_id}: {e}")
+            print(f" Error processing call {call_id}: {e}")
         finally:
             session.close()
     
-    def process_call_async(self, call_id):
+    def process_call_async(self, call_id: int) -> None:
         """Process call in background thread"""
         thread = Thread(target=self.process_call_recording, args=(call_id,))
         thread.daemon = True
@@ -232,9 +255,9 @@ class AIAnalytics:
 
 
 # Global instance
-ai_analytics = None
+ai_analytics: Optional[AIAnalytics] = None
 
-def get_ai_analytics():
+def get_ai_analytics() -> AIAnalytics:
     """Get or create AI analytics instance"""
     global ai_analytics
     if ai_analytics is None:

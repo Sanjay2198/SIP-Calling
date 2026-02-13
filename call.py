@@ -3,13 +3,24 @@ SIP Softphone - Main Application
 Integrates SIP client, web API, and AI analytics
 """
 import sys
+import socket
 import yaml
-import threading
-import uvicorn
-import time
 from models import init_db
-from sip_client import SIPClient
 from ai_analytics import get_ai_analytics
+
+
+def _is_port_available(host, port):
+    """Return True if host:port can be bound by this process."""
+    bind_host = "0.0.0.0" if host in ("0.0.0.0", "", "*") else host
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind((bind_host, int(port)))
+        return True
+    except OSError:
+        return False
+    finally:
+        sock.close()
+
 
 def main():
     """Main application entry point"""
@@ -41,29 +52,6 @@ def main():
     except Exception as e:
         print(f" AI analytics initialization failed: {e}")
     
-    # Start SIP client in background
-    sip_client = None
-    def start_sip():
-        nonlocal sip_client
-        try:
-            from sip_client import PJSUA2_AVAILABLE
-            if not PJSUA2_AVAILABLE:
-                print("  SIP client disabled - PJSUA2 not installed")
-                print("   Web UI and API will work in demo mode")
-                return
-            
-            sip_client = SIPClient()
-            sip_client.start()
-        except Exception as e:
-            print(f" SIP client failed: {e}")
-            print("   Continuing without SIP functionality...")
-    
-    sip_thread = threading.Thread(target=start_sip, daemon=True)
-    sip_thread.start()
-    
-    # Give SIP client time to start
-    time.sleep(2)
-    
     # Start web server
     print("\n" + "=" * 60)
     print(" Starting Web Server...")
@@ -72,6 +60,11 @@ def main():
     api_config = config.get('api', {})
     host = api_config.get('host', '0.0.0.0')
     port = api_config.get('port', 8000)
+
+    if not _is_port_available(host, port):
+        print(f" Port {port} is already in use on host {host}.")
+        print(" Stop the existing process or change api.port in config.yaml.")
+        sys.exit(1)
     
     print(f"\n SIP Softphone is ready!")
     print(f" Web UI: http://localhost:{port}")
@@ -92,8 +85,6 @@ def main():
         )
     except KeyboardInterrupt:
         print("\n\n Shutting down...")
-        if sip_client:
-            sip_client.stop()
         print(" Goodbye!")
     except Exception as e:
         print(f" Server error: {e}")
