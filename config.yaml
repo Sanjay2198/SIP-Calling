@@ -1,9 +1,9 @@
 # SIP Server Configuration
 sip:
-  domain: "176.9.190.89" # SIP server domain
-  username: "193636" # SIP username
-  password: "Salesforce@123" # SIP password
-  sip_id: "193636@157.51.150.247" # Full SIP ID
+  domain: "pbx.example.com" # SIP server domain
+  username: "1001" # SIP username
+  password: "change-me" # SIP password
+  sip_id: "1001@pbx.example.com" # Full SIP ID
   port: 5060
   transport: "UDP" # UDP or TCP
 
@@ -27,7 +27,7 @@ database:
 # Web API
 api:
   host: "0.0.0.0"
-  port: 8002
+  port: 8000
   debug: true
 
 # AI Analytics

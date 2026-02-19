@@ -6,7 +6,11 @@ __pycache__/
 .Python
 env/
 venv/
+.venv/
+.venv*/
 ENV/
+venv311/
+.venv311/
 build/
 develop-eggs/
 dist/
@@ -29,6 +33,7 @@ wheels/
 # Database
 *.db
 *.sqlite3
+*.db-journal
 
 # Recordings
 recordings/
@@ -45,6 +50,8 @@ recordings/
 # Logs
 *.log
 logs/
+*.out.log
+*.err.log
 
 # OS
 .DS_Store
